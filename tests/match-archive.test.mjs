@@ -71,3 +71,17 @@ test("completed matches archive the winner and scoreboard without changing chat"
   assert.deepEqual(JSON.parse(entries[0].scoreboard), { Sky: 5, Moon: 1 });
   assert.deepEqual(JSON.parse(entries[0].messages), messages);
 });
+
+test("a past room remains an archive while the player starts a new active room", () => {
+  const historyBooks = [{ code: "match-a", token: "history-a" }];
+  const activeSession = { code: "match-b", token: "active-b" };
+  const archive = { code: historyBooks[0].code, readOnly: true, messages: ["old tide"] };
+
+  historyBooks.push({ code: activeSession.code, token: "history-b" });
+
+  assert.equal(historyBooks[0].code, "match-a");
+  assert.equal(activeSession.code, "match-b");
+  assert.equal(archive.readOnly, true);
+  assert.deepEqual(archive.messages, ["old tide"]);
+  assert.notEqual(activeSession.code, archive.code);
+});
