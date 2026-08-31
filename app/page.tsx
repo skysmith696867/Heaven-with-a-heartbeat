@@ -101,7 +101,7 @@ export default function Home() {
       <div className="heart-orbit"><Heart fill="currentColor" /><span>✦</span><span>✧</span><span>✦</span></div>
       <p className="eyebrow">tarocchi between us</p><h1>the cards are only<br />an excuse to look closer</h1>
       <p className="intro">Two players. One secret room.</p>
-      <div className="consent-note"><Sparkles size={17} /><p>This game uses mutual curiosity, shared attention, and gradual self disclosure. Both of you can skip any prompt.</p></div>
+      <div className="consent-note"><Sparkles size={17} /><p>this game is dangerous and safe simultaneously. good luck strong warrior. ur sparring partner sky is happy ur here </p></div>
       <label className="field-label" htmlFor="name">what should the cards call you?</label>
       <Input id="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="your name" className="romance-input" maxLength={24} />
       {mode === "join" && <><label className="field-label" htmlFor="code">something only we know.</label><Input id="code" value={joinCode} onChange={(event) => setJoinCode(event.target.value)} placeholder="type your secret phrase" className="romance-input code-input" maxLength={60} autoCapitalize="none" autoCorrect="off" /></>}
