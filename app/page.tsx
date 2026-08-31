@@ -208,6 +208,7 @@ export default function Home() {
     </section>
   </main>;
 
+  if (mode !== "game" || !game || !session) return <><ConstellationMap />{screen}</>;
   const isYourTurn = game.turnId === game.you.id;
   const unseen = game.messages.filter((message) => message.player_id !== game.you.id).length;
   screen = <main className="game-shell"><div className="game-aurora" />
