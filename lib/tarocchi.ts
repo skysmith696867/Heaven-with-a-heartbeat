@@ -13,6 +13,8 @@ export type PlayedCard = { playerId: string; card: GameCard };
 export type GameState = {
   phase: "waiting" | "playing" | "finished" | "closed";
   playerIds: string[];
+  departedIds?: string[];
+  matchExit?: "left" | "closed" | null;
   playerNames: Record<string, string>;
   hands: Record<string, GameCard[]>;
   stock: GameCard[];
@@ -134,6 +136,7 @@ function trickWinner(trick: PlayedCard[]) {
 }
 
 export function playCard(state: GameState, playerId: string, cardId: string) {
+  if (state.matchExit) throw new Error("This table is no longer accepting cards.");
   if (state.phase !== "playing") throw new Error("This match is not accepting cards right now.");
   if (state.turnId !== playerId) throw new Error("It is not your turn yet.");
   const hand = state.hands[playerId] ?? [];
@@ -177,6 +180,33 @@ export function playCard(state: GameState, playerId: string, cardId: string) {
     state.leaderId = winnerId;
     state.turnId = null;
   }
+}
+
+export function leaveMatch(state: GameState, playerId: string) {
+  if (state.phase !== "playing" || state.playerIds.length < 2) throw new Error("This table cannot be left right now.");
+  if (state.departedIds?.includes(playerId) || state.matchExit) throw new Error("This table is no longer accepting exits.");
+  const opponentId = state.playerIds.find((id) => id !== playerId);
+  if (!opponentId) throw new Error("Your opponent could not be found.");
+  state.departedIds = [playerId];
+  state.matchExit = "left";
+  state.phase = "finished";
+  state.winnerId = opponentId;
+  state.intermissionOpen = false;
+  state.intermissionReady = [];
+  state.turnId = null;
+  state.leaderId = null;
+  state.lastMessage = `${state.playerNames[playerId]} left the unfinished table. ${state.playerNames[opponentId]} wins by default. Your chat is still here.`;
+}
+
+export function closeMatch(state: GameState) {
+  if (state.phase === "closed") return;
+  state.matchExit = "closed";
+  state.phase = "closed";
+  state.intermissionOpen = false;
+  state.intermissionReady = [];
+  state.turnId = null;
+  state.leaderId = null;
+  state.lastMessage = "The table is closed until next time. Your chat is still here.";
 }
 
 export function readyFromIntermission(state: GameState, playerId: string) {

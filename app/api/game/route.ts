@@ -1,5 +1,5 @@
 import { addMessage, createRoom, joinRoom, messagesForRoom, playerByToken, playersForRoom, roomByCode, saveState } from "@/lib/game-store";
-import { beginGame, initialState, playCard, prompts, readyFromIntermission, scoreCards, type GameState } from "@/lib/tarocchi";
+import { beginGame, closeMatch, initialState, leaveMatch, playCard, prompts, readyFromIntermission, scoreCards, type GameState } from "@/lib/tarocchi";
 
 function cleanName(value: unknown) {
   return String(value ?? "").trim().slice(0, 24);
@@ -21,10 +21,12 @@ function tokenFrom(request: Request) {
 }
 
 function publicState(state: GameState, playerId: string, messages: unknown[]) {
-  const opponentId = state.playerIds.find((id) => id !== playerId) ?? null;
+  const activeIds = state.playerIds.filter((id) => !(state.departedIds ?? []).includes(id));
+  const opponentId = activeIds.find((id) => id !== playerId) ?? null;
   const prompt = state.promptIndex > 0 ? prompts[(state.promptIndex - 1) % prompts.length] : null;
   return {
     phase: state.phase,
+    matchExit: state.matchExit ?? null,
     you: { id: playerId, name: state.playerNames[playerId], hand: state.hands[playerId] ?? [], score: scoreCards(state.captured[playerId]) },
     opponent: opponentId ? { id: opponentId, name: state.playerNames[opponentId], cardCount: state.hands[opponentId]?.length ?? 0, score: scoreCards(state.captured[opponentId]) } : null,
     stockCount: state.stock.length,
@@ -104,6 +106,12 @@ export async function POST(request: Request) {
       const message = String(body.message ?? "").trim().slice(0, 500);
       if (!message) return Response.json({ error: "Say the thing or let it stay a mystery." }, { status: 400 });
       await addMessage(room.id, player.id, message);
+    } else if (action === "leave") {
+      leaveMatch(state, player.id);
+      await saveState(room.id, state);
+    } else if (action === "close") {
+      closeMatch(state);
+      await saveState(room.id, state);
     } else {
       return Response.json({ error: "That move is not part of this game." }, { status: 400 });
     }
