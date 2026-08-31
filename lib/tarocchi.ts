@@ -31,6 +31,8 @@ export type GameState = {
   winnerId: string | null;
 };
 
+export type ArchiveMessage = { id: number; body: string; created_at: string; player_id: string; name: string };
+
 const suits: Suit[] = ["Cups", "Coins", "Swords", "Batons"];
 const court = ["Ace", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Page", "Knight", "Queen", "King"];
 const trumpNames = ["The Magician", "The High Priestess", "The Empress", "The Emperor", "The Hierophant", "The Lovers", "The Chariot", "Justice", "The Hermit", "Fortune", "Strength", "The Hanged One", "Death", "Temperance", "The Devil", "The Tower", "The Star", "The Moon", "The Sun", "Judgement", "The World"];
@@ -224,4 +226,25 @@ export function readyFromIntermission(state: GameState, playerId: string) {
 
 export function scoreCards(cards: GameCard[] = []) {
   return cards.reduce((sum, card) => sum + card.points, 0);
+}
+
+export function archiveEntries(state: GameState, players: { id: string; name: string; history_token: string }[], messages: ArchiveMessage[], archivedAt = new Date().toISOString()) {
+  const scoreboard = Object.fromEntries(state.playerIds.map((id) => [state.playerNames[id], scoreCards(state.captured[id])]));
+  const promptHistory = prompts.slice(0, state.promptIndex);
+  return players.map((player) => {
+    const opponent = players.find((candidate) => candidate.id !== player.id);
+    const result = state.winnerId === player.id ? "win" : state.winnerId ? "loss" : "draw";
+    return {
+      id: `${state.playerIds.join("-")}-${player.id}`,
+      playerId: player.id,
+      historyToken: player.history_token,
+      opponentName: opponent?.name ?? "your opponent",
+      result: state.matchExit === "left" && state.winnerId === player.id ? "win by forfeit" : result,
+      forfeit: state.matchExit === "left",
+      scoreboard: JSON.stringify(scoreboard),
+      prompts: JSON.stringify(promptHistory),
+      messages: JSON.stringify(messages),
+      archivedAt,
+    };
+  });
 }

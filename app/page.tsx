@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, DoorOpen, Heart, LockKeyhole, MessageCircle, MoonStar, Send, Sparkles, UsersRound, X } from "lucide-react";
+import { BookOpen, Copy, DoorOpen, Heart, LockKeyhole, MessageCircle, MoonStar, Send, Sparkles, UsersRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -9,8 +9,9 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import type { GameCard, PlayedCard } from "@/lib/tarocchi";
 
 type Message = { id: number; body: string; created_at: string; player_id: string; name: string };
+type ArchivedMatch = { id: string; opponent_name: string; archived_at: string; result: string; forfeit: boolean; scoreboard: Record<string, number>; prompts: string[]; messages: Message[] };
 type ViewState = {
-  phase: "waiting" | "playing" | "finished";
+  phase: "waiting" | "playing" | "finished" | "closed";
   matchExit: "left" | "closed" | null;
   you: { id: string; name: string; hand: GameCard[]; score: number };
   opponent: { id: string; name: string; cardCount: number; score: number } | null;
@@ -43,6 +44,8 @@ export default function Home() {
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [chatOpen, setChatOpen] = useState(false); const [draft, setDraft] = useState("");
   const [exitOpen, setExitOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false); const [historyBusy, setHistoryBusy] = useState(false);
+  const [history, setHistory] = useState<ArchivedMatch[]>([]); const [selectedHistory, setSelectedHistory] = useState<string | null>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async (active: Session) => {
@@ -64,14 +67,33 @@ export default function Home() {
   useEffect(() => { if (chatOpen) chatEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [chatOpen, game?.messages.length]);
   const chemistry = useMemo(() => Math.min(100, (game?.promptIndex ?? 0) * 8 + Math.min(28, (game?.messages.length ?? 0) * 4)), [game]);
 
+  function rememberHistoryToken(token: string | undefined) {
+    if (!token) return;
+    const saved = JSON.parse(window.localStorage.getItem("tarocchi-between-us-history") ?? "[]") as string[];
+    if (!saved.includes(token)) window.localStorage.setItem("tarocchi-between-us-history", JSON.stringify([...saved, token]));
+  }
+
+  async function openHistory() {
+    setHistoryBusy(true); setError("");
+    try {
+      const tokens = JSON.parse(window.localStorage.getItem("tarocchi-between-us-history") ?? "[]") as string[];
+      const responses = await Promise.all(tokens.map(async (token) => {
+        const response = await fetch("/api/game?history=1", { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
+        return response.ok ? (await response.json()).matches as ArchivedMatch[] : [];
+      }));
+      setHistory(Array.from(new Map(responses.flat().map((match) => [match.id, match])).values()));
+      setHistoryOpen(true);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "The history books stayed closed."); } finally { setHistoryBusy(false); }
+  }
+
   async function enter(action: "create" | "join") {
     setBusy(true); setError("");
-    try { const result = await callGame({ action, name, code: joinCode }); const next = { code: result.code, token: result.token }; window.localStorage.setItem("tarocchi-between-us-session", JSON.stringify(next)); setSession(next); setGame(result.state); setMode("clearance"); }
+    try { const result = await callGame({ action, name, code: joinCode }); rememberHistoryToken(result.historyToken); const next = { code: result.code, token: result.token }; window.localStorage.setItem("tarocchi-between-us-session", JSON.stringify(next)); setSession(next); setGame(result.state); setMode("clearance"); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Try that invitation again."); } finally { setBusy(false); }
   }
   async function play(cardId: string) {
     if (!session) return; setBusy(true); setError("");
-    try { const result = await callGame({ action: "play", code: session.code, cardId }, session); setGame(result.state); }
+    try { const result = await callGame({ action: "play", code: session.code, cardId }, session); rememberHistoryToken(result.historyToken); setGame(result.state); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "That card cannot answer this trick."); } finally { setBusy(false); }
   }
   async function readyFromHeaven() {
@@ -87,11 +109,14 @@ export default function Home() {
   async function exitMatch(action: "leave" | "close") {
     if (!session) return; setBusy(true); setError("");
     try {
-      const result = await callGame({ action, code: session.code }, session);
+      const result = await callGame({ action, code: session.code }, session); rememberHistoryToken(result.historyToken);
       if (action === "leave") {
         window.localStorage.removeItem("tarocchi-between-us-session"); setSession(null); setGame(null); setMode("welcome");
       } else { setGame(result.state); setExitOpen(false); }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "The table could not close just yet."); } finally { setBusy(false); }
+  }
+  function returnToLobby() {
+    window.localStorage.removeItem("tarocchi-between-us-session"); setSession(null); setGame(null); setMode("welcome");
   }
   if (mode === "clearance" && game && session) return <main className="lobby-shell clearance-shell">
     <div className="aurora aurora-one" /><div className="aurora aurora-two" />
@@ -121,6 +146,8 @@ export default function Home() {
         <Button onClick={() => enter("create")} disabled={busy || !name.trim()} className="primary-romance"><Heart size={16} /> create our table</Button>
         <Button onClick={() => { setMode("join"); setError(""); }} variant="ghost" className="ghost-romance"><UsersRound size={16} /> i have a secret code</Button>
       </> : <><Button onClick={() => enter("join")} disabled={busy || !name.trim() || !joinCode.trim()} className="primary-romance"><LockKeyhole size={16} /> enter their orbit</Button><Button onClick={() => setMode("welcome")} variant="ghost" className="ghost-romance">go back</Button></>}</div>
+      {mode === "welcome" && <Button onClick={openHistory} disabled={historyBusy} variant="ghost" className="history-button"><BookOpen size={16} /> legends of our time: history books of our past lives</Button>}
+      {historyOpen && <section className="history-overlay" role="dialog" aria-modal="true" aria-labelledby="history-title"><div className="history-dialog"><button className="exit-close" onClick={() => setHistoryOpen(false)} aria-label="Close"><X size={18} /></button><p className="eyebrow">the archive</p><h2 id="history-title">legends of our time</h2>{!history.length && <p className="history-empty">No past lives have been written here yet.</p>}{history.map((match) => <article className="history-entry" key={match.id}><button onClick={() => setSelectedHistory(selectedHistory === match.id ? null : match.id)}><span>{match.opponent_name}</span><strong>{match.result}</strong><small>{new Date(match.archived_at).toLocaleDateString()}</small></button>{selectedHistory === match.id && <div className="history-detail"><p><strong>scoreboard</strong> {Object.entries(match.scoreboard).map(([player, score]) => `${player}: ${score}`).join(" · ")}</p><p><strong>prompts</strong> {match.prompts.length ? match.prompts.join(" / ") : "none"}</p><div className="history-messages">{match.messages.map((message) => <div className="message-bubble" key={message.id}><span>{message.name}</span><p>{message.body}</p></div>)}</div></div>}</article>)}</div></section>}
     </section>
   </main>;
 
@@ -129,13 +156,13 @@ export default function Home() {
   return <main className="game-shell"><div className="game-aurora" />
     <header className="game-header"><div><p className="eyebrow">tarocchi between us</p><h1>{game.you.name} <span>&</span> {game.opponent?.name ?? "the one you invited"}</h1></div><div className="header-actions"><div className="room-chip"><LockKeyhole size={13} /> room {session.code}<button onClick={() => navigator.clipboard.writeText(session.code)} aria-label="Copy room code"><Copy size={14} /></button></div><button className="exit-trigger" onClick={() => setExitOpen(true)} aria-label="Leave or close match"><DoorOpen size={17} /></button></div></header>
     <section className="chemistry-strip" aria-label={`Friendship core is ${chemistry} percent`}><div><span>friendship core</span><strong>{chemistry < 25 ? "warming up" : chemistry < 60 ? "in sync" : chemistry < 90 ? "inner circle" : "friendship legendary"}</strong></div><Progress value={chemistry} className="chemistry-progress" /><Heart size={18} fill="currentColor" /></section>
-    {game.phase === "waiting" ? <section className="waiting-table"><div className="card-back waiting-back"><Heart /><span>SKY</span></div><p className="eyebrow">the table is waiting</p><h2>send this code to the person you would rather be here with</h2><button className="giant-code" onClick={() => navigator.clipboard.writeText(session.code)}>{session.code} <Copy size={20} /></button><p>The cards will deal themselves when they arrive.</p></section> : game.matchExit ? <section className="ending-card"><p className="eyebrow">{game.matchExit === "closed" ? "the table is closed" : "the table is unfinished"}</p><h2>{game.matchExit === "closed" ? "until next time" : "they left the table"}</h2><p>{game.lastMessage}</p><Button onClick={() => setChatOpen(true)} className="primary-romance">keep talking</Button><span className="chat-kept">this room and every message will still be here when you return</span></section> : <>
+    {game.phase === "waiting" ? <section className="waiting-table"><div className="card-back waiting-back"><Heart /><span>SKY</span></div><p className="eyebrow">the table is waiting</p><h2>send this code to the person you would rather be here with</h2><button className="giant-code" onClick={() => navigator.clipboard.writeText(session.code)}>{session.code} <Copy size={20} /></button><p>The cards will deal themselves when they arrive.</p></section> : game.matchExit ? <section className="ending-card"><p className="eyebrow">{game.matchExit === "closed" ? "the table is closed" : "the table is unfinished"}</p><h2>{game.matchExit === "closed" ? "until next time" : "they left the table"}</h2><p>{game.lastMessage}</p><div className="ending-actions"><Button onClick={() => setChatOpen(true)} className="primary-romance">keep talking</Button><Button onClick={returnToLobby} variant="outline" className="ready-button">return to lobby</Button></div><span className="chat-kept">this room and every message will still be here when you return</span></section> : <>
       <section className="status-row"><div><span>{game.opponent?.name}</span><strong>{game.opponent?.cardCount ?? 0} cards · {game.opponent?.score ?? 0} points</strong></div><p>{game.lastMessage}</p><div className="align-right"><span>trick {game.trickNumber}</span><strong>{game.stockCount} in the stock</strong></div></section>
       {game.prompt && <section className="reveal-card"><div className="reveal-number">reveal {game.promptIndex}</div><Sparkles size={22} /><p>{game.prompt}</p><button onClick={() => setChatOpen(true)}>answer where only they can see <MessageCircle size={15} /></button></section>}
       <section className="table-area"><div className="opponent-hand" aria-label="Opponent cards">{Array.from({ length: Math.min(8, game.opponent?.cardCount ?? 0) }, (_, i) => <div className="mini-back" key={i}><Heart size={13} /></div>)}</div><div className="trick-stage">{game.currentTrick.length ? game.currentTrick.map(({ playerId, card }) => <div className="played-slot" key={`${playerId}-${card.id}`}><span>{playerId === game.you.id ? "you" : game.opponent?.name}</span><CardFace card={card} compact /></div>) : <div className="empty-trick"><Heart /><p>{isYourTurn ? "lead with a card" : `waiting for ${game.opponent?.name}`}</p></div>}</div></section>
-      {game.phase === "finished" ? <section className="ending-card"><p className="eyebrow">the final trick</p><h2>{game.winnerId === game.you.id ? "you won the cards" : game.winnerId ? `${game.opponent?.name} won the cards` : "the cards call it even"}</h2><p>Winning was never the dangerous part. Being honest was.</p><Button onClick={() => setChatOpen(true)} className="primary-romance">keep talking</Button><span className="chat-kept">this room and every message will still be here when you return</span></section> : <section className="your-hand"><div className="hand-heading"><div><p className="eyebrow">your hand</p><h2>{isYourTurn ? "your move, beautiful" : "watch what they reveal"}</h2></div><span>{game.you.score} points captured</span></div>{error && <p className="error-note">{error}</p>}<div className="cards-scroll">{game.you.hand.map((card) => <CardFace key={card.id} card={card} onPlay={() => play(card.id)} disabled={!isYourTurn || busy} />)}</div></section>}
+      {game.phase === "finished" ? <section className="ending-card"><p className="eyebrow">the final trick</p><h2>{game.winnerId === game.you.id ? "you won the cards" : game.winnerId ? `${game.opponent?.name} won the cards` : "the cards call it even"}</h2><p>Winning was never the dangerous part. Being honest was.</p><div className="ending-actions"><Button onClick={() => setChatOpen(true)} className="primary-romance">keep talking</Button><Button onClick={returnToLobby} variant="outline" className="ready-button">return to lobby</Button></div><span className="chat-kept">this room and every message will still be here when you return</span></section> : <section className="your-hand"><div className="hand-heading"><div><p className="eyebrow">your hand</p><h2>{isYourTurn ? "your move, beautiful" : "watch what they reveal"}</h2></div><span>{game.you.score} points captured</span></div>{error && <p className="error-note">{error}</p>}<div className="cards-scroll">{game.you.hand.map((card) => <CardFace key={card.id} card={card} onPlay={() => play(card.id)} disabled={!isYourTurn || busy} />)}</div></section>}
     </>}
-    <Sheet open={chatOpen} onOpenChange={setChatOpen}><SheetTrigger asChild><button className="chat-orbit" aria-label="Open private chat"><MessageCircle /><span>between us</span>{unseen > 0 && <b>{Math.min(9, unseen)}</b>}</button></SheetTrigger><SheetContent className="chat-sheet"><SheetHeader className="chat-header"><SheetTitle>between us</SheetTitle><SheetDescription>Only the two people at this table can read this room. The chat stays here after the last trick.</SheetDescription></SheetHeader><div className="messages-list">{!game.messages.length && <div className="first-message"><Heart /><p>Someone has to risk saying the first honest thing.</p></div>}{game.messages.map((message) => <div key={message.id} className={`message-bubble ${message.player_id === game.you.id ? "mine" : "theirs"}`}><span>{message.player_id === game.you.id ? "you" : message.name}</span><p>{message.body}</p></div>)}<div ref={chatEnd} /></div><form onSubmit={sendMessage} className="chat-compose"><Input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="say what the card made you think..." maxLength={500} aria-label="Private message" /><Button type="submit" size="icon" disabled={!draft.trim()} aria-label="Send message"><Send /></Button></form></SheetContent></Sheet>
+    <Sheet open={chatOpen} onOpenChange={setChatOpen}><SheetTrigger asChild><button className="chat-orbit" aria-label="Open private chat"><MessageCircle /><span>between us</span>{unseen > 0 && <b>{Math.min(9, unseen)}</b>}</button></SheetTrigger><SheetContent className="chat-sheet"><SheetHeader className="chat-header"><SheetTitle>between us</SheetTitle><SheetDescription>Only the two people at this table can read this room. The chat stays here after the last trick.</SheetDescription></SheetHeader><div className="messages-list">{!game.messages.length && <div className="first-message"><Heart /><p>Someone has to risk saying the first honest thing.</p></div>}{game.messages.map((message) => <div key={message.id} className={`message-bubble ${message.player_id === game.you.id ? "mine" : "theirs"}`}><span>{message.player_id === game.you.id ? "you" : message.name}</span><p>{message.body}</p></div>)}<div ref={chatEnd} /></div>{game.phase === "playing" && !game.matchExit && <form onSubmit={sendMessage} className="chat-compose"><Input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="say what the card made you think..." maxLength={500} aria-label="Private message" /><Button type="submit" size="icon" disabled={!draft.trim()} aria-label="Send message"><Send /></Button></form>}</SheetContent></Sheet>
     {game.intermissionOpen && game.prompt && <section className="intermission-overlay" role="dialog" aria-modal="true" aria-labelledby="intermission-title"><div className="intermission-stars">✦　🪽　✧</div><p className="eyebrow">the cards are taking a breath</p><h2 id="intermission-title">intermission from heaven</h2><p className="intermission-question">{game.prompt}</p><div className="intermission-actions"><Button onClick={() => setChatOpen(true)} className="primary-romance"><MessageCircle /> answer between us</Button><Button onClick={readyFromHeaven} disabled={busy || game.youReady} variant="outline" className="ready-button">{game.youReady ? `waiting for ${game.opponent?.name}` : "we answered. return to the cards"}</Button><button onClick={readyFromHeaven} disabled={busy || game.youReady} className="skip-question">skip this question</button></div><p className="ready-count">{game.intermissionReadyCount} of 2 ready to return</p></section>}
     {exitOpen && <section className="exit-overlay" role="dialog" aria-modal="true" aria-labelledby="exit-title"><div className="exit-dialog"><button className="exit-close" onClick={() => setExitOpen(false)} aria-label="Close"><X size={18} /></button><p className="eyebrow">a quiet choice</p><h2 id="exit-title">do u want to leave this unfinished?</h2><div className="exit-actions"><Button onClick={() => exitMatch("leave")} disabled={busy} className="primary-romance">leave without me and let opponent win by default</Button><Button onClick={() => exitMatch("close")} disabled={busy} variant="outline" className="ready-button">close our table until next time</Button></div></div></section>}
   </main>;

@@ -13,10 +13,25 @@ export const rooms = sqliteTable("rooms", {
 export const players = sqliteTable("players", {
   id: text("id").primaryKey(),
   roomId: text("room_id").notNull().references(() => rooms.id, { onDelete: "cascade" }),
-  token: text("token").notNull().unique(),
+  token: text("token").unique(),
+  historyToken: text("history_token").notNull().unique(),
   name: text("name").notNull(),
   seat: integer("seat").notNull(),
   joinedAt: text("joined_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const archivedMatches = sqliteTable("archived_matches", {
+  id: text("id").primaryKey(),
+  roomId: text("room_id").notNull(),
+  playerId: text("player_id").notNull(),
+  historyToken: text("history_token").notNull(),
+  opponentName: text("opponent_name").notNull(),
+  archivedAt: text("archived_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  result: text("result").notNull(),
+  forfeit: integer("forfeit", { mode: "boolean" }).notNull().default(false),
+  scoreboard: text("scoreboard").notNull(),
+  prompts: text("prompts").notNull(),
+  messages: text("messages").notNull(),
 });
 
 export const messages = sqliteTable("messages", {
