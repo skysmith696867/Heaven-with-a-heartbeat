@@ -1,4 +1,4 @@
-import { addMessage, archiveMatch, archivedMatchesForToken, chroniclesForRoom, createRoom, joinRoom, messagesForRoom, playerByHistoryToken, playerByToken, playersForRoom, revokeActiveToken, roomByCode, saveChronicleAnswer, saveState, type ChroniclePublicProfile } from "@/lib/game-store";
+import { addMessage, archiveMatch, archivedMatchesForToken, chroniclesForRoom, createRoom, joinRoom, messagesForRoom, playerByHistoryToken, playerByToken, playersForRoom, revokeActiveToken, roomByCode, saveChronicleAnswer, savePlayerAvatar, saveState, type ChroniclePublicProfile } from "@/lib/game-store";
 import { chronicleQuestionIds } from "@/lib/chronicle";
 import { archiveEntries, beginGame, closeMatch, initialState, leaveMatch, playCard, prompts, readyFromIntermission, scoreCards, type GameState } from "@/lib/tarocchi";
 
@@ -32,8 +32,8 @@ function publicState(state: GameState, playerId: string, messages: unknown[], ch
   return {
     phase: state.phase,
     matchExit: state.matchExit ?? null,
-    you: { id: playerId, name: state.playerNames[playerId], hand: state.hands[playerId] ?? [], score: totalScoreFor(playerId), chronicleBonus: bonusFor(playerId) },
-    opponent: opponentId ? { id: opponentId, name: state.playerNames[opponentId], cardCount: state.hands[opponentId]?.length ?? 0, score: totalScoreFor(opponentId), chronicleBonus: bonusFor(opponentId) } : null,
+    you: { id: playerId, name: state.playerNames[playerId], avatarData: chronicles.find((profile) => profile.playerId === playerId)?.avatarData ?? null, hand: state.hands[playerId] ?? [], score: totalScoreFor(playerId), chronicleBonus: bonusFor(playerId) },
+    opponent: opponentId ? { id: opponentId, name: state.playerNames[opponentId], avatarData: chronicles.find((profile) => profile.playerId === opponentId)?.avatarData ?? null, cardCount: state.hands[opponentId]?.length ?? 0, score: totalScoreFor(opponentId), chronicleBonus: bonusFor(opponentId) } : null,
     stockCount: state.stock.length,
     currentTrick: state.currentTrick,
     leaderId: state.leaderId,
@@ -137,6 +137,10 @@ export async function POST(request: Request) {
       if (!answer) return Response.json({ error: "Write something before sealing the page." }, { status: 400 });
       const award = await saveChronicleAnswer(room.id, player.id, questionId, answer);
       chronicleAwarded = award.awardedNow;
+    } else if (action === "avatar") {
+      const avatarData = String(body.avatarData ?? "");
+      if (!/^data:image\/(?:jpeg|png|webp);base64,/i.test(avatarData) || avatarData.length > 350000) return Response.json({ error: "Choose a smaller JPG, PNG, or WebP portrait." }, { status: 400 });
+      await savePlayerAvatar(player.id, avatarData);
     } else if (action === "leave") {
       leaveMatch(state, player.id);
       await saveState(room.id, state);

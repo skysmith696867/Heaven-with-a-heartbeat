@@ -16,6 +16,7 @@ export const players = sqliteTable("players", {
   token: text("token").unique(),
   historyToken: text("history_token").notNull().unique(),
   name: text("name").notNull(),
+  avatarData: text("avatar_data"),
   seat: integer("seat").notNull(),
   joinedAt: text("joined_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

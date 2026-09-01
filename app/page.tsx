@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Check, Copy, DoorOpen, Heart, LockKeyhole, MessageCircle, MoonStar, Save, ScrollText, Send, Sparkles, UsersRound, X } from "lucide-react";
+import { BookOpen, Camera, Check, Copy, DoorOpen, Heart, LockKeyhole, MessageCircle, MoonStar, Save, ScrollText, Send, Sparkles, UserRound, UsersRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -12,15 +12,15 @@ import type { GameCard, PlayedCard } from "@/lib/tarocchi";
 
 type Message = { id: number; body: string; created_at: string; player_id: string; name: string };
 type ArchivedMatch = { id: string; opponent_name: string; archived_at: string; result: string; forfeit: boolean; scoreboard: Record<string, number>; prompts: string[]; messages: Message[] };
-type ChronicleProfile = { playerId: string; name: string; answers: Record<string, string>; awardedQuestionIds: number[]; bonusPoints: number };
+type ChronicleProfile = { playerId: string; name: string; avatarData: string | null; answers: Record<string, string>; awardedQuestionIds: number[]; bonusPoints: number };
 type ArchivedChronicleProfile = ChronicleProfile & { roomId: string };
 const HISTORY_BOOKS_KEY = "past-lives-history-books";
 const PLAYER_NAME_KEY = "tarocchi-between-us-player-name";
 type ViewState = {
   phase: "waiting" | "playing" | "finished" | "closed";
   matchExit: "left" | "closed" | null;
-  you: { id: string; name: string; hand: GameCard[]; score: number; chronicleBonus: number };
-  opponent: { id: string; name: string; cardCount: number; score: number; chronicleBonus: number } | null;
+  you: { id: string; name: string; avatarData: string | null; hand: GameCard[]; score: number; chronicleBonus: number };
+  opponent: { id: string; name: string; avatarData: string | null; cardCount: number; score: number; chronicleBonus: number } | null;
   stockCount: number; currentTrick: PlayedCard[]; leaderId: string | null; turnId: string | null;
   trickNumber: number; promptIndex: number; prompt: string | null; lastWinnerId: string | null;
   intermissionOpen: boolean; intermissionReadyCount: number; youReady: boolean;
@@ -70,6 +70,26 @@ function lunarAge(archivedAt: string) {
 
 function wordCount(value: string) {
   return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function resizeAvatar(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    image.onload = () => {
+      const size = 320;
+      const canvas = document.createElement("canvas"); canvas.width = size; canvas.height = size;
+      const context = canvas.getContext("2d");
+      if (!context) { URL.revokeObjectURL(objectUrl); reject(new Error("That portrait could not be prepared.")); return; }
+      const scale = Math.max(size / image.width, size / image.height);
+      const width = image.width * scale; const height = image.height * scale;
+      context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+      URL.revokeObjectURL(objectUrl);
+      resolve(canvas.toDataURL("image/jpeg", .82));
+    };
+    image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("That image would not open.")); };
+    image.src = objectUrl;
+  });
 }
 
 function ConstellationMap() {
@@ -141,6 +161,7 @@ export default function Home() {
   const [chronicleOpen, setChronicleOpen] = useState(false); const [selectedChronicleId, setSelectedChronicleId] = useState<string | null>(null);
   const [chronicleDrafts, setChronicleDrafts] = useState<Record<string, string>>({}); const [chronicleSaving, setChronicleSaving] = useState<number | null>(null);
   const [chronicleNotice, setChronicleNotice] = useState("");
+  const [glowingProfiles, setGlowingProfiles] = useState<Record<string, boolean>>({}); const [avatarBusy, setAvatarBusy] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false); const [historyBusy, setHistoryBusy] = useState(false);
   const [history, setHistory] = useState<ArchivedMatch[]>([]); const [selectedHistory, setSelectedHistory] = useState<string | null>(null);
@@ -261,6 +282,14 @@ export default function Home() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "The Chronicle refused to turn the page."); }
     finally { setChronicleSaving(null); }
   }
+  async function uploadAvatar(file: File | undefined) {
+    if (!file || !session) return;
+    if (!file.type.startsWith("image/")) { setError("Choose an image for your portrait."); return; }
+    setAvatarBusy(true); setError("");
+    try { const avatarData = await resizeAvatar(file); const result = await callGame({ action: "avatar", code: session.code, avatarData }, session); setGame(result.state); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "That portrait could not enter the room."); }
+    finally { setAvatarBusy(false); }
+  }
   async function exitMatch(action: "leave" | "close") {
     if (!session) return; setBusy(true); setError("");
     try {
@@ -317,9 +346,11 @@ export default function Home() {
   const intermissionDraftKey = `${game.you.id}:${intermissionQuestion.id}`;
   const intermissionAnswer = chronicleDrafts[intermissionDraftKey] ?? game.chronicles.find((profile) => profile.playerId === game.you.id)?.answers[String(intermissionQuestion.id)] ?? "";
   const intermissionWords = wordCount(intermissionAnswer);
+  const floatingProfiles = [{ id: game.you.id, name: game.you.name, avatarData: game.you.avatarData, side: "left", editable: true }, { id: game.opponent?.id ?? "waiting-player", name: game.opponent?.name ?? "your sparring partner", avatarData: game.opponent?.avatarData ?? null, side: "right", editable: false }] as const;
   screen = <main className="game-shell"><div className="game-aurora" />
     <header className="game-header"><div><p className="eyebrow">tarocchi between us</p><h1 className="player-marquee"><Heart className="header-heart first-heart" fill="currentColor" /><span className="player-neon first-player">{game.you.name}</span><i>&</i><span className="player-neon second-player">{game.opponent?.name ?? "the one you invited"}</span><Heart className="header-heart second-heart" fill="currentColor" /></h1></div><div className="header-actions"><div className="room-chip"><LockKeyhole size={13} /> room {session.code}<button onClick={() => navigator.clipboard.writeText(session.code)} aria-label="Copy room code"><Copy size={14} /></button></div><button className="exit-trigger" onClick={() => setExitOpen(true)} aria-label="Leave or close match"><DoorOpen size={17} /></button></div></header>
     <section className="chemistry-strip" aria-label={`Friendship core is ${chemistry} percent`}><div><span>friendship core</span><strong>{chemistry < 25 ? "warming up" : chemistry < 60 ? "in sync" : chemistry < 90 ? "inner circle" : "friendship legendary"}</strong></div><Progress value={chemistry} className="chemistry-progress" /><Heart size={18} fill="currentColor" /></section>
+    <div className="floating-profiles" aria-label="Players in this room">{floatingProfiles.map((profile) => <div key={profile.id} className={`floating-profile-wrap profile-${profile.side}`}><button className={`floating-profile ${glowingProfiles[profile.id] ? "is-glowing" : ""}`} onClick={() => setGlowingProfiles((current) => ({ ...current, [profile.id]: !current[profile.id] }))} aria-label={`Make ${profile.name}'s portrait glow`}><Heart className="profile-heart-frame" fill="currentColor" /><span className="profile-picture">{profile.avatarData ? <img src={profile.avatarData} alt={`${profile.name}'s profile`} /> : <UserRound />}</span><small>{profile.name}</small></button>{profile.editable && <label className="avatar-upload" aria-label="Upload or replace your profile picture"><Camera />{avatarBusy ? <span>...</span> : null}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={(event) => { void uploadAvatar(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>}</div>)}</div>
     {game.phase === "waiting" ? <section className="waiting-table"><div className="card-back waiting-back"><Heart /><span>SKY</span></div><p className="eyebrow">the table is waiting</p><h2>send this code to the person you would rather be here with</h2><button className="giant-code" onClick={() => navigator.clipboard.writeText(session.code)}>{session.code} <Copy size={20} /></button><p>The cards will deal themselves when they arrive.</p></section> : game.matchExit ? <section className="ending-card"><p className="eyebrow">{game.matchExit === "closed" ? "the table is closed" : "the table is unfinished"}</p><h2>{game.matchExit === "closed" ? "until next time" : "they left the table"}</h2><p>{game.lastMessage}</p><div className="ending-actions"><Button onClick={() => setChatOpen(true)} className="primary-romance">keep talking</Button><Button onClick={returnToLobby} variant="outline" className="ready-button">back to the beginning of time</Button></div><span className="chat-kept">this room and every message will still be here when you return</span></section> : <>
       <section className="status-row"><div><span>{game.opponent?.name}</span><strong>{game.opponent?.cardCount ?? 0} cards · {game.opponent?.score ?? 0} points</strong></div><p>{game.lastMessage}</p><div className="align-right"><span>trick {game.trickNumber}</span><strong>{game.stockCount} in the stock</strong></div></section>
       <section className="table-area"><div className="opponent-hand" aria-label="Opponent cards">{Array.from({ length: Math.min(8, game.opponent?.cardCount ?? 0) }, (_, i) => <div className="mini-back" key={i}><Heart size={13} /></div>)}</div><div className="trick-stage">{game.currentTrick.length ? game.currentTrick.map(({ playerId, card }) => <div className="played-slot" key={`${playerId}-${card.id}`}><span>{playerId === game.you.id ? "you" : game.opponent?.name}</span><CardFace card={card} compact /></div>) : <div className="empty-trick"><Heart /><p>{isYourTurn ? "lead with a card" : `waiting for ${game.opponent?.name}`}</p></div>}</div></section>
