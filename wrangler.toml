@@ -2,9 +2,8 @@ name = "tarocchi-between-us"
 compatibility_date = "2026-05-15"
 compatibility_flags = ["nodejs_compat"]
 
-migrations_dir = "drizzle"
-
 [[d1_databases]]
 binding = "DB"
 database_name = "site-creator-d1"
 database_id = "b46afcd1-de7e-4a3b-94a0-986507ad06d9"
+migrations_dir = "drizzle"

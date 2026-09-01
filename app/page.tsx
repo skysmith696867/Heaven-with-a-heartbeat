@@ -29,7 +29,31 @@ const CONSTELLATION_TRACKS = [
 type SpotifyController = { loadUri: (uri: string) => void; play: () => void; pause: () => void };
 type SpotifyIframeApi = { createController: (element: HTMLElement, options: { uri: string }, callback: (controller: SpotifyController) => void) => void };
 declare global { interface Window { SpotifyIframeApi?: SpotifyIframeApi; onSpotifyIframeApiReady?: (api: SpotifyIframeApi) => void; } }
-const STAR_POSITIONS = CONSTELLATION_TRACKS.map((_, index) => ({ left: `${8 + ((index * 37) % 84)}%`, top: `${10 + ((index * 61) % 78)}%`, size: `${8 + (index % 4) * 3}px` }));
+const STAR_POSITIONS = [
+  { left: "8%", top: "14%", size: "11px" },
+  { left: "22%", top: "27%", size: "14px" },
+  { left: "38%", top: "11%", size: "12px" },
+  { left: "54%", top: "29%", size: "15px" },
+  { left: "69%", top: "13%", size: "12px" },
+  { left: "82%", top: "25%", size: "14px" },
+  { left: "94%", top: "10%", size: "10px" },
+  { left: "4%", top: "38%", size: "9px" },
+  { left: "4%", top: "54%", size: "12px" },
+  { left: "4%", top: "70%", size: "10px" },
+  { left: "4%", top: "85%", size: "13px" },
+  { left: "96%", top: "39%", size: "11px" },
+  { left: "96%", top: "55%", size: "9px" },
+  { left: "96%", top: "71%", size: "13px" },
+  { left: "96%", top: "86%", size: "10px" },
+  { left: "12%", top: "95%", size: "9px" },
+  { left: "24%", top: "93%", size: "12px" },
+  { left: "37%", top: "96%", size: "10px" },
+  { left: "49%", top: "93%", size: "13px" },
+  { left: "61%", top: "96%", size: "9px" },
+  { left: "73%", top: "93%", size: "12px" },
+  { left: "85%", top: "96%", size: "10px" },
+  { left: "94%", top: "93%", size: "11px" },
+];
 
 function lunarAge(archivedAt: string) {
   const days = (Date.now() - new Date(archivedAt).getTime()) / 86400000;
@@ -68,7 +92,7 @@ function ConstellationMap() {
     });
   }
   return <div className="constellation-map" aria-label="Constellation music map">
-    <svg className="constellation-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="M8 18 L30 42 L49 16 L68 55 L92 27 M12 77 L35 61 L57 88 L77 64 L94 82 M30 42 L35 61 M68 55 L77 64" /></svg>
+    <svg className="constellation-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="M8 14 L22 27 L38 11 L54 29 L69 13 L82 25 L94 10" /></svg>
     <div className="constellation-orbit orbit-one" /><div className="constellation-orbit orbit-two" />
     <div className="constellation-stars">{STAR_POSITIONS.map((position, index) => <button key={CONSTELLATION_TRACKS[index]} className={`constellation-star ${selected === index ? "is-active" : ""}`} style={{ left: position.left, top: position.top, width: position.size, height: position.size }} onClick={() => selectTrack(index)} aria-label={`Play constellation star ${index + 1}`} aria-pressed={selected === index} />)}</div>
     <div className={`now-playing-relic ${selected === null ? "is-hidden" : ""}`} aria-live="polite"><span className="relic-label">now orbiting</span><div ref={embed} className="spotify-embed" /></div>

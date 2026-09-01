@@ -11,9 +11,9 @@ async function roomCode() {
   const start = Math.floor(Math.random() * wordBank.length);
   for (let offset = 0; offset < wordBank.length; offset += 1) {
     const phrase = wordBank[(start + offset) % wordBank.length];
-    if (!(await roomByCode(phrase, true))) return phrase;
+    if (!(await roomByCode(phrase))) return phrase;
   }
-  throw new Error("Every secret phrase is inside another active room. Try again after one of the tables goes quiet.");
+  throw new Error("Every secret phrase is already in use. Try again with a different table name.");
 }
 
 function tokenFrom(request: Request) {

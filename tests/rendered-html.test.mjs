@@ -31,3 +31,9 @@ test("renders development preview metadata", async () => {
   );
   assert.match(await response.text(), developmentPreviewMeta);
 });
+
+test("new room codes are checked against all rooms, not only active ones", async () => {
+  const source = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../app/api/game/route.ts", import.meta.url), "utf8"));
+  assert.doesNotMatch(source, /roomByCode\(phrase,\s*true\)/);
+  assert.match(source, /roomByCode\(phrase\)/);
+});
