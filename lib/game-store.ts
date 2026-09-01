@@ -17,6 +17,11 @@ export async function roomByCode(code: string, activeOnly = false) {
   return db().prepare(`SELECT id, code, phase, state FROM rooms WHERE lower(code) = lower(?)${activeClause} LIMIT 1`).bind(code).first<RoomRecord>();
 }
 
+export async function archiveClosedRoomCode(roomId: string, code: string) {
+  await db().prepare("UPDATE rooms SET code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND phase NOT IN ('waiting', 'playing')")
+    .bind(`${code} · past ${roomId.slice(0, 6)}`, roomId).run();
+}
+
 export async function playerByToken(token: string) {
   return db().prepare("SELECT id, room_id, token, history_token, name, avatar_data, seat FROM players WHERE token = ? LIMIT 1").bind(token).first<PlayerRecord>();
 }

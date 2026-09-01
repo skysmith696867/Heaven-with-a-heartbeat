@@ -1,4 +1,4 @@
-import { addMessage, archiveMatch, archivedMatchesForToken, chroniclesForRoom, createRoom, joinRoom, messagesForRoom, playerByHistoryToken, playerByToken, playersForRoom, revokeActiveToken, roomByCode, saveChronicleAnswer, savePlayerAvatar, saveState, type ChroniclePublicProfile } from "@/lib/game-store";
+import { addMessage, archiveClosedRoomCode, archiveMatch, archivedMatchesForToken, chroniclesForRoom, createRoom, joinRoom, messagesForRoom, playerByHistoryToken, playerByToken, playersForRoom, revokeActiveToken, roomByCode, saveChronicleAnswer, savePlayerAvatar, saveState, type ChroniclePublicProfile } from "@/lib/game-store";
 import { chronicleQuestionIds } from "@/lib/chronicle";
 import { archiveEntries, beginGame, closeMatch, initialState, leaveMatch, playCard, prompts, readyFromIntermission, scoreCards, type GameState } from "@/lib/tarocchi";
 
@@ -6,14 +6,23 @@ function cleanName(value: unknown) {
   return String(value ?? "").trim().slice(0, 24);
 }
 
-const phraseBeginnings = ["Velvet", "Holographic", "Secret", "Fallen", "Celestial", "Electric", "Impossible", "Moonlit", "Hidden", "Heavenly", "Blushing", "Wandering", "Silver", "Neon", "Ancient", "Euphoric"];
+const favoritePhrases = ["Dance of the fallen stars", "when time was young and eden was here", "Sapling of knowledge", "Books scream", "euphoria whispers", "Heaven sent", "Trace of the secrets", "We built this kingdom", "The cards only speak to those who know", "Beep boop bop bop", "Wide eyes", "Kingdom of thoughts", "Dream built kingdoms", "Heavens in ur sighs", "The moon remembers us", "Velvet prophecy", "Stars know our names", "A library of almosts", "Saturn keeps the secret", "Eden after midnight", "Our impossible archive"];
+const phraseBeginnings = ["Velvet", "Holographic", "Secret", "Fallen", "Celestial", "Electric", "Impossible", "Moonlit", "Hidden", "Blushing", "Wandering", "Silver", "Neon", "Ancient", "Euphoric", "Dream-built"];
 const phraseMiddles = ["moon", "comet", "archive", "kingdom", "oracle", "heart", "library", "saturn", "dream", "constellation", "garden", "relic", "starlight", "riddle", "heaven", "mirage"];
 const phraseEndings = ["whispers", "remembers", "screams", "returns", "glows", "waits", "awakens", "knows", "dreams", "falls", "watches", "dances", "opens", "lingers", "answers", "rises"];
 
 async function roomCode() {
+  const favoriteStart = Math.floor(Math.random() * favoritePhrases.length);
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    const phrase = `${phraseBeginnings[Math.floor(Math.random() * phraseBeginnings.length)]} ${phraseMiddles[Math.floor(Math.random() * phraseMiddles.length)]} ${phraseEndings[Math.floor(Math.random() * phraseEndings.length)]}`;
-    if (!(await roomByCode(phrase))) return phrase;
+    const phrase = attempt < favoritePhrases.length
+      ? favoritePhrases[(favoriteStart + attempt) % favoritePhrases.length]
+      : `${phraseBeginnings[Math.floor(Math.random() * phraseBeginnings.length)]} ${phraseMiddles[Math.floor(Math.random() * phraseMiddles.length)]} ${phraseEndings[Math.floor(Math.random() * phraseEndings.length)]}`;
+    const existing = await roomByCode(phrase);
+    if (!existing) return phrase;
+    if (!["waiting", "playing"].includes(existing.phase)) {
+      await archiveClosedRoomCode(existing.id, phrase);
+      return phrase;
+    }
   }
   return `Secret constellation ${crypto.randomUUID().slice(0, 8)}`;
 }
