@@ -6,15 +6,16 @@ function cleanName(value: unknown) {
   return String(value ?? "").trim().slice(0, 24);
 }
 
-const wordBank = ["euphoria whispers", "Heaven sent", "Dance of the fallen stars", "Trace of the secrets", "when time was young and eden was here", "We built this kingdom", "The cards only speak to those who know", "Beep boop bop bop", "Books scream", "Wide eyes", "Sapling of knowledge"];
+const phraseBeginnings = ["Velvet", "Holographic", "Secret", "Fallen", "Celestial", "Electric", "Impossible", "Moonlit", "Hidden", "Heavenly", "Blushing", "Wandering", "Silver", "Neon", "Ancient", "Euphoric"];
+const phraseMiddles = ["moon", "comet", "archive", "kingdom", "oracle", "heart", "library", "saturn", "dream", "constellation", "garden", "relic", "starlight", "riddle", "heaven", "mirage"];
+const phraseEndings = ["whispers", "remembers", "screams", "returns", "glows", "waits", "awakens", "knows", "dreams", "falls", "watches", "dances", "opens", "lingers", "answers", "rises"];
 
 async function roomCode() {
-  const start = Math.floor(Math.random() * wordBank.length);
-  for (let offset = 0; offset < wordBank.length; offset += 1) {
-    const phrase = wordBank[(start + offset) % wordBank.length];
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const phrase = `${phraseBeginnings[Math.floor(Math.random() * phraseBeginnings.length)]} ${phraseMiddles[Math.floor(Math.random() * phraseMiddles.length)]} ${phraseEndings[Math.floor(Math.random() * phraseEndings.length)]}`;
     if (!(await roomByCode(phrase))) return phrase;
   }
-  throw new Error("Every secret phrase is already in use. Try again with a different table name.");
+  return `Secret constellation ${crypto.randomUUID().slice(0, 8)}`;
 }
 
 function tokenFrom(request: Request) {
