@@ -16,6 +16,8 @@ type ChronicleProfile = { playerId: string; name: string; avatarData: string | n
 type ArchivedChronicleProfile = ChronicleProfile & { roomId: string };
 const HISTORY_BOOKS_KEY = "past-lives-history-books";
 const PLAYER_NAME_KEY = "tarocchi-between-us-player-name";
+const PLAYER_THEME_KEY = "tarocchi-between-us-player-theme";
+type PlayerTheme = "pink" | "blue" | "blood";
 type ViewState = {
   phase: "waiting" | "playing" | "finished" | "closed";
   matchExit: "left" | "closed" | null;
@@ -155,6 +157,7 @@ function CardFace({ card, onPlay, disabled, compact = false }: { card: GameCard;
 export default function Home() {
   const [mode, setMode] = useState<"welcome" | "join" | "clearance" | "game">("welcome");
   const [name, setName] = useState(""); const [joinCode, setJoinCode] = useState("");
+  const [theme, setTheme] = useState<PlayerTheme>("blue"); const [scrollOpen, setScrollOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null); const [game, setGame] = useState<ViewState | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [chatOpen, setChatOpen] = useState(false); const [draft, setDraft] = useState("");
@@ -177,6 +180,8 @@ export default function Home() {
     const timer = window.setTimeout(() => {
       const rememberedName = window.localStorage.getItem(PLAYER_NAME_KEY);
       if (rememberedName) setName(rememberedName);
+      const rememberedTheme = window.localStorage.getItem(PLAYER_THEME_KEY);
+      if (rememberedTheme === "pink" || rememberedTheme === "blue" || rememberedTheme === "blood") setTheme(rememberedTheme);
       const saved = window.localStorage.getItem("tarocchi-between-us-session");
       if (!saved) return;
       try {
@@ -195,6 +200,11 @@ export default function Home() {
     const saved = JSON.parse(window.localStorage.getItem(HISTORY_BOOKS_KEY) ?? "[]") as { code: string; token: string }[];
     const entry = { code: code ?? "", token };
     if (!saved.some((book) => book.token === token)) window.localStorage.setItem(HISTORY_BOOKS_KEY, JSON.stringify([...saved, entry]));
+  }
+
+  function chooseTheme(nextTheme: PlayerTheme) {
+    setTheme(nextTheme);
+    window.localStorage.setItem(PLAYER_THEME_KEY, nextTheme);
   }
 
   async function openHistory() {
@@ -298,7 +308,7 @@ export default function Home() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "The table could not close just yet."); } finally { setBusy(false); }
   }
   function returnToLobby() {
-    window.localStorage.removeItem("tarocchi-between-us-session"); setSession(null); setGame(null); setMode("welcome");
+    window.localStorage.removeItem("tarocchi-between-us-session"); setSession(null); setGame(null); setMode("welcome"); setScrollOpen(false);
   }
   let screen: ReactNode;
   if (mode === "clearance" && game && session) screen = <main className="lobby-shell clearance-shell">
@@ -315,7 +325,17 @@ export default function Home() {
 
   else if (mode !== "game" || !game || !session) screen = <main className="lobby-shell">
     <div className="aurora aurora-one" /><div className="aurora aurora-two" />
-    <section className="lobby-card">
+    <div className="theme-chooser" aria-label="Choose the color of your realm">
+      <span>choose your realm</span>
+      {(["pink", "blue", "blood"] as PlayerTheme[]).map((choice) => <button key={choice} className={`theme-seal theme-seal-${choice}`} onClick={() => chooseTheme(choice)} aria-label={`${choice === "blood" ? "Blood red" : `Pastel ${choice}`} color scheme`} aria-pressed={theme === choice}><Heart fill="currentColor" /></button>)}
+    </div>
+    <section className={`lobby-card scroll-lobby ${scrollOpen ? "is-unfurled" : "is-rolled"}`}>
+      <button className="scroll-toggle" onClick={() => setScrollOpen((current) => !current)} aria-expanded={scrollOpen}>
+        <ScrollText />
+        <span>{scrollOpen ? "roll the invitation closed" : "unfurl your private table"}</span>
+        <small>{scrollOpen ? "tap the top roll" : "tap to reveal everything inside"}</small>
+      </button>
+      <div className="scroll-content">
       <div className="tiny-mark"><MoonStar size={15} /> a private table for two</div>
       <div className="heart-orbit"><Heart fill="currentColor" /><span>✦</span><span>✧</span><span>✦</span></div>
       <p className="eyebrow">tarocchi between us</p><h1>the cards are only<br />an excuse to look closer</h1>
@@ -333,10 +353,11 @@ export default function Home() {
       {mode === "welcome" && <div className="home-archives"><Button onClick={openHistory} disabled={historyBusy} variant="ghost" className="history-button"><BookOpen size={16} /> our past lives (the legends history books hold)</Button><Button onClick={openChronicleHistory} disabled={chronicleHistoryBusy} variant="ghost" className="history-button chronicle-history-button"><ScrollText size={16} /> read the chronicles</Button></div>}
       {historyOpen && <section className="history-overlay" role="dialog" aria-modal="true" aria-labelledby="history-title"><div className="history-dialog"><button className="exit-close" onClick={() => setHistoryOpen(false)} aria-label="Close"><X size={18} /></button><p className="eyebrow">the archive</p><h2 id="history-title">legends of our time</h2>{!history.length && <p className="history-empty">No past lives have been written here yet.</p>}{history.map((match) => <article className="history-entry" key={match.id}><button onClick={() => setSelectedHistory(selectedHistory === match.id ? null : match.id)}><span>{match.opponent_name}</span><strong>{match.result}</strong><small>{new Date(match.archived_at).toLocaleDateString()} · {lunarAge(match.archived_at)}</small></button>{selectedHistory === match.id && <div className="history-detail"><p><strong>scoreboard</strong> {Object.entries(match.scoreboard).map(([player, score]) => `${player}: ${score}`).join(" · ")}</p><p><strong>prompts</strong> {match.prompts.length ? match.prompts.join(" / ") : "none"}</p><div className="history-messages">{match.messages.map((message) => <div className="message-bubble" key={message.id}><span>{message.name}</span><p>{message.body}</p></div>)}</div></div>}</article>)}</div></section>}
       {chronicleHistoryOpen && <section className="history-overlay" role="dialog" aria-modal="true" aria-labelledby="chronicle-history-title"><div className="history-dialog chronicle-home-dialog"><button className="exit-close" onClick={() => setChronicleHistoryOpen(false)} aria-label="Close"><X size={18} /></button><p className="eyebrow">private human archive</p><h2 id="chronicle-history-title">{selectedChronicleHistory ? `The Chronicles of ${chronicleHistory.find((profile) => `${profile.roomId}:${profile.playerId}` === selectedChronicleHistory)?.name ?? "a peculiar human"}` : "The Chronicle Archive"}</h2>{!chronicleHistory.length ? <p className="history-empty">No Chronicle pages have been recorded on this device yet.</p> : <><div className="chronicle-profile-tabs home-chronicle-tabs">{chronicleHistory.map((profile) => { const key = `${profile.roomId}:${profile.playerId}`; return <button key={key} className={selectedChronicleHistory === key ? "is-active" : ""} onClick={() => setSelectedChronicleHistory(key)}>{profile.name}</button>; })}</div>{(() => { const profile = chronicleHistory.find((entry) => `${entry.roomId}:${entry.playerId}` === selectedChronicleHistory) ?? chronicleHistory[0]; if (!profile) return null; const recorded = Object.values(profile.answers).filter((answer) => answer.trim()).length; return <><div className="home-chronicle-score"><span>{recorded} entries recorded</span><strong>+{profile.bonusPoints} points discovered</strong></div><div className="home-chronicle-pages">{chronicleQuestions.map((question) => { const answer = profile.answers[String(question.id)]; return <article key={question.id} className={`chronicle-page ${answer ? "is-recorded" : ""}`}><div className="chronicle-question"><span>{String(question.id).padStart(2, "0")}</span><p>{question.prompt}</p></div>{answer ? <><p className="chronicle-answer">{answer}</p>{profile.awardedQuestionIds.includes(question.id) && <div className="chronicle-answer-status"><strong><Sparkles /> +5 points earned</strong></div>}</> : <p className="chronicle-unknown">??? · entry undiscovered</p>}</article>; })}</div></>; })()}</>}</div></section>}
+      </div>
     </section>
   </main>;
 
-  if (mode !== "game" || !game || !session) return <><ConstellationMap />{screen}</>;
+  if (mode !== "game" || !game || !session) return <div className={`theme-root theme-${theme}`}><ConstellationMap />{screen}</div>;
   const isYourTurn = game.turnId === game.you.id;
   const unseen = game.messages.filter((message) => message.player_id !== game.you.id).length;
   const selectedChronicle = game.chronicles.find((profile) => profile.playerId === selectedChronicleId) ?? game.chronicles.find((profile) => profile.playerId === game.you.id) ?? { playerId: game.you.id, name: game.you.name, answers: {}, awardedQuestionIds: [], bonusPoints: 0 };
@@ -363,5 +384,5 @@ export default function Home() {
     {game.intermissionOpen && <section className="intermission-overlay chronicle-intermission" role="dialog" aria-modal="true" aria-labelledby="intermission-title"><div className="intermission-stars">✦　📖　✧</div><p className="eyebrow">a page appears between the cards</p><h2 id="intermission-title">The Chronicles of {game.you.name}</h2><div className="intermission-entry-number">entry {String(intermissionQuestion.id).padStart(2, "0")} · {intermissionQuestion.collection}</div><p className="intermission-question">{intermissionQuestion.prompt}</p>{game.youReady ? <div className="chronicle-waiting"><Check /><p>Your answer is sealed in the Archive.</p><strong>Waiting for {game.opponent?.name} to finish their page…</strong></div> : <><Textarea value={intermissionAnswer} onChange={(event) => setChronicleDrafts((current) => ({ ...current, [intermissionDraftKey]: event.target.value }))} placeholder="write directly into your Chronicle..." maxLength={4000} className="intermission-answer" /><div className="intermission-word-reward"><span className={intermissionWords >= 50 ? "is-complete" : ""}>{intermissionWords} / 50 words</span><strong><Sparkles /> 50+ words earns 5 points</strong></div><div className="intermission-actions"><Button onClick={() => recordIntermissionPage(intermissionQuestion.id)} disabled={busy || chronicleSaving === intermissionQuestion.id || !intermissionAnswer.trim()} className="primary-romance"><BookOpen /> record answer & return to cards</Button><button onClick={readyFromHeaven} disabled={busy} className="skip-question">leave this page unknown</button></div></>}<p className="ready-count">{game.intermissionReadyCount} of 2 pages sealed</p></section>}
     {exitOpen && <section className="exit-overlay" role="dialog" aria-modal="true" aria-labelledby="exit-title"><div className="exit-dialog"><button className="exit-close" onClick={() => setExitOpen(false)} aria-label="Close"><X size={18} /></button><p className="eyebrow">a quiet choice</p><h2 id="exit-title">do u want to leave this unfinished?</h2><div className="exit-actions"><Button onClick={() => exitMatch("leave")} disabled={busy} className="primary-romance">leave without me and let opponent win by default</Button><Button onClick={() => exitMatch("close")} disabled={busy} variant="outline" className="ready-button">close our table until next time</Button></div></div></section>}
   </main>;
-  return <><ConstellationMap />{screen}</>;
+  return <div className={`theme-root theme-${theme}`}><ConstellationMap />{screen}</div>;
 }
