@@ -74,6 +74,7 @@ function wordCount(value: string) {
 function ConstellationMap() {
   const embed = useRef<HTMLDivElement>(null);
   const controller = useRef<SpotifyController | null>(null);
+  const pendingTrack = useRef<number | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
@@ -81,7 +82,15 @@ function ConstellationMap() {
     const create = (api: SpotifyIframeApi) => {
       if (initialized || controller.current || !embed.current) return;
       initialized = true;
-      api.createController(embed.current, { uri: `spotify:track:${CONSTELLATION_TRACKS[0]}` }, (created) => { controller.current = created; });
+      api.createController(embed.current, { uri: `spotify:track:${CONSTELLATION_TRACKS[0]}` }, (created) => {
+        controller.current = created;
+        if (pendingTrack.current !== null) {
+          created.loadUri(`spotify:track:${CONSTELLATION_TRACKS[pendingTrack.current]}`);
+          created.play();
+          pendingTrack.current = null;
+          setPlaying(true);
+        }
+      });
     };
     if (window.SpotifyIframeApi) create(window.SpotifyIframeApi);
     const previousReady = window.onSpotifyIframeApiReady;
@@ -94,7 +103,7 @@ function ConstellationMap() {
   function selectTrack(index: number) {
     const player = controller.current;
     setSelected((current) => {
-      if (!player) return index;
+      if (!player) { pendingTrack.current = index; return index; }
       if (current === index) { if (playing) player.pause(); else player.play(); setPlaying(!playing); return current; }
       player.loadUri(`spotify:track:${CONSTELLATION_TRACKS[index]}`); player.play(); setPlaying(true); return index;
     });

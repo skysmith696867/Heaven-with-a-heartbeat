@@ -59,10 +59,13 @@ body { isolation:isolate; }
   stroke-dasharray:none;
   filter:drop-shadow(0 0 4px rgba(255,255,255,.9));
 }
+.constellation-star{touch-action:manipulation;-webkit-appearance:none}.constellation-star:after{content:"";position:absolute;inset:-10px;border-radius:50%}
 
 @media(max-width:700px) {
   .constellation-map { z-index:0; }
   .lobby-shell,.game-shell { z-index:10; }
   .lobby-card,.clearance-card { z-index:11; }
-  .constellation-lines { opacity:.62; }
+  .constellation-lines { opacity:.72; }
+  .constellation-star:after { inset:-14px; }
+  .now-playing-relic { bottom:max(10px,env(safe-area-inset-bottom)); }
 }
