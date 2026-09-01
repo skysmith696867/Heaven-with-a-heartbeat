@@ -4,6 +4,8 @@ import type { GameState } from "./tarocchi";
 export type PlayerRecord = { id: string; room_id: string; token: string | null; history_token: string; name: string; seat: number };
 export type RoomRecord = { id: string; code: string; phase: string; state: string };
 export type ArchiveRecord = { id: string; room_id: string; player_id: string; opponent_name: string; archived_at: string; result: string; forfeit: number; scoreboard: string; prompts: string; messages: string };
+export type ChronicleAnswerRecord = { player_id: string; question_id: number; answer: string; points_awarded: number; updated_at: string };
+export type ChroniclePublicProfile = { playerId: string; name: string; answers: Record<string, string>; awardedQuestionIds: number[]; bonusPoints: number };
 
 function db() {
   if (!env.DB) throw new Error("The private game table is unavailable.");
@@ -66,4 +68,27 @@ export async function addMessage(roomId: string, playerId: string, body: string)
 export async function messagesForRoom(roomId: string) {
   const result = await db().prepare("SELECT messages.id, messages.body, messages.created_at, players.id AS player_id, players.name FROM messages JOIN players ON players.id = messages.player_id WHERE messages.room_id = ? ORDER BY messages.id").bind(roomId).all();
   return result.results;
+}
+
+export async function chroniclesForRoom(roomId: string) {
+  const [players, answerResult] = await Promise.all([
+    playersForRoom(roomId),
+    db().prepare("SELECT player_id, question_id, answer, points_awarded, updated_at FROM chronicle_answers WHERE room_id = ? ORDER BY question_id").bind(roomId).all<ChronicleAnswerRecord>(),
+  ]);
+  return players.map((player) => {
+    const playerAnswers = answerResult.results.filter((answer) => answer.player_id === player.id);
+    const awardedQuestionIds = playerAnswers.filter((answer) => Boolean(answer.points_awarded)).map((answer) => answer.question_id);
+    return { playerId: player.id, name: player.name, answers: Object.fromEntries(playerAnswers.map((answer) => [String(answer.question_id), answer.answer])), awardedQuestionIds, bonusPoints: awardedQuestionIds.length * 5 } satisfies ChroniclePublicProfile;
+  });
+}
+
+export async function saveChronicleAnswer(roomId: string, playerId: string, questionId: number, answer: string) {
+  const existing = await db().prepare("SELECT points_awarded FROM chronicle_answers WHERE player_id = ? AND question_id = ? LIMIT 1").bind(playerId, questionId).first<{ points_awarded: number }>();
+  const wordCount = answer.trim().split(/\s+/).filter(Boolean).length;
+  const pointsAwarded = Boolean(existing?.points_awarded) || wordCount >= 50;
+  await db().prepare(`INSERT INTO chronicle_answers (room_id, player_id, question_id, answer, points_awarded)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(player_id, question_id) DO UPDATE SET answer = excluded.answer, points_awarded = excluded.points_awarded, updated_at = CURRENT_TIMESTAMP`)
+    .bind(roomId, playerId, questionId, answer, pointsAwarded ? 1 : 0).run();
+  return { awardedNow: !existing?.points_awarded && pointsAwarded, wordCount };
 }

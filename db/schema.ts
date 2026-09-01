@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const rooms = sqliteTable("rooms", {
   id: text("id").primaryKey(),
@@ -41,3 +41,13 @@ export const messages = sqliteTable("messages", {
   body: text("body").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const chronicleAnswers = sqliteTable("chronicle_answers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  roomId: text("room_id").notNull().references(() => rooms.id, { onDelete: "cascade" }),
+  playerId: text("player_id").notNull().references(() => players.id, { onDelete: "cascade" }),
+  questionId: integer("question_id").notNull(),
+  answer: text("answer").notNull(),
+  pointsAwarded: integer("points_awarded", { mode: "boolean" }).notNull().default(false),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("chronicle_answers_player_question_unique").on(table.playerId, table.questionId)]);

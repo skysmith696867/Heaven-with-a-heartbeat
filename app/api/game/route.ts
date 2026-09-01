@@ -1,4 +1,5 @@
-import { addMessage, archiveMatch, archivedMatchesForToken, createRoom, joinRoom, messagesForRoom, playerByHistoryToken, playerByToken, playersForRoom, revokeActiveToken, roomByCode, saveState } from "@/lib/game-store";
+import { addMessage, archiveMatch, archivedMatchesForToken, chroniclesForRoom, createRoom, joinRoom, messagesForRoom, playerByHistoryToken, playerByToken, playersForRoom, revokeActiveToken, roomByCode, saveChronicleAnswer, saveState, type ChroniclePublicProfile } from "@/lib/game-store";
+import { chronicleQuestionIds } from "@/lib/chronicle";
 import { archiveEntries, beginGame, closeMatch, initialState, leaveMatch, playCard, prompts, readyFromIntermission, scoreCards, type GameState } from "@/lib/tarocchi";
 
 function cleanName(value: unknown) {
@@ -20,15 +21,19 @@ function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
 }
 
-function publicState(state: GameState, playerId: string, messages: unknown[]) {
+function publicState(state: GameState, playerId: string, messages: unknown[], chronicles: ChroniclePublicProfile[] = []) {
   const activeIds = state.playerIds.filter((id) => !(state.departedIds ?? []).includes(id));
   const opponentId = activeIds.find((id) => id !== playerId) ?? null;
   const prompt = state.promptIndex > 0 ? prompts[(state.promptIndex - 1) % prompts.length] : null;
+  const bonusFor = (id: string) => chronicles.find((profile) => profile.playerId === id)?.bonusPoints ?? 0;
+  const totalScoreFor = (id: string) => scoreCards(state.captured[id]) + bonusFor(id);
+  const completedScores = activeIds.map((id) => ({ id, score: totalScoreFor(id) })).sort((a, b) => b.score - a.score);
+  const scoredWinnerId = completedScores.length === 2 && completedScores[0].score === completedScores[1].score ? null : completedScores[0]?.id ?? null;
   return {
     phase: state.phase,
     matchExit: state.matchExit ?? null,
-    you: { id: playerId, name: state.playerNames[playerId], hand: state.hands[playerId] ?? [], score: scoreCards(state.captured[playerId]) },
-    opponent: opponentId ? { id: opponentId, name: state.playerNames[opponentId], cardCount: state.hands[opponentId]?.length ?? 0, score: scoreCards(state.captured[opponentId]) } : null,
+    you: { id: playerId, name: state.playerNames[playerId], hand: state.hands[playerId] ?? [], score: totalScoreFor(playerId), chronicleBonus: bonusFor(playerId) },
+    opponent: opponentId ? { id: opponentId, name: state.playerNames[opponentId], cardCount: state.hands[opponentId]?.length ?? 0, score: totalScoreFor(opponentId), chronicleBonus: bonusFor(opponentId) } : null,
     stockCount: state.stock.length,
     currentTrick: state.currentTrick,
     leaderId: state.leaderId,
@@ -41,8 +46,9 @@ function publicState(state: GameState, playerId: string, messages: unknown[]) {
     youReady: state.intermissionReady?.includes(playerId) ?? false,
     lastWinnerId: state.lastWinnerId,
     lastMessage: state.lastMessage,
-    winnerId: state.winnerId,
+    winnerId: state.phase === "finished" && state.matchExit !== "left" ? scoredWinnerId : state.winnerId,
     messages,
+    chronicles,
   };
 }
 
@@ -69,8 +75,8 @@ export async function GET(request: Request) {
       return Response.json({ matches: await archivedMatchesForToken(owner.history_token) });
     }
     const { player, room, state } = await authenticated(request);
-    const messages = await messagesForRoom(room.id);
-    return Response.json({ state: publicState(state, player.id, messages) });
+    const [messages, chronicles] = await Promise.all([messagesForRoom(room.id), chroniclesForRoom(room.id)]);
+    return Response.json({ state: publicState(state, player.id, messages, chronicles) });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "The room slipped out of reach." }, { status: 404 });
   }
@@ -110,6 +116,7 @@ export async function POST(request: Request) {
     const code = String(body.code ?? "").trim();
     const requestWithCode = new Request(`${new URL(request.url).origin}/api/game?code=${encodeURIComponent(code)}`, { headers: request.headers });
     const { player, room, state } = await authenticated(requestWithCode);
+    let chronicleAwarded = false;
     if (action === "play") {
       playCard(state, player.id, String(body.cardId ?? ""));
       await saveState(room.id, state);
@@ -122,6 +129,13 @@ export async function POST(request: Request) {
       const message = String(body.message ?? "").trim().slice(0, 500);
       if (!message) return Response.json({ error: "Say the thing or let it stay a mystery." }, { status: 400 });
       await addMessage(room.id, player.id, message);
+    } else if (action === "chronicle-answer") {
+      const questionId = Number(body.questionId);
+      if (!chronicleQuestionIds.has(questionId)) return Response.json({ error: "That page is not part of this Chronicle." }, { status: 400 });
+      const answer = String(body.answer ?? "").trim().slice(0, 4000);
+      if (!answer) return Response.json({ error: "Write something before sealing the page." }, { status: 400 });
+      const award = await saveChronicleAnswer(room.id, player.id, questionId, answer);
+      chronicleAwarded = award.awardedNow;
     } else if (action === "leave") {
       leaveMatch(state, player.id);
       await saveState(room.id, state);
@@ -137,8 +151,8 @@ export async function POST(request: Request) {
     } else {
       return Response.json({ error: "That move is not part of this game." }, { status: 400 });
     }
-    const messages = await messagesForRoom(room.id);
-    return Response.json({ historyToken: player.history_token, state: publicState(state, player.id, messages) });
+    const [messages, chronicles] = await Promise.all([messagesForRoom(room.id), chroniclesForRoom(room.id)]);
+    return Response.json({ historyToken: player.history_token, chronicleAwarded, state: publicState(state, player.id, messages, chronicles) });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "The cards refused that move." }, { status: 400 });
   }
