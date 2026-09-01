@@ -52,6 +52,8 @@ body { isolation:isolate; }
 }
 .lobby-shell > *:not(.aurora),
 .game-shell > *:not(.game-aurora) { pointer-events:auto; }
+.game-shell > .floating-profiles { pointer-events:none; }
+.game-shell > .floating-profiles .floating-profile-wrap { pointer-events:auto; }
 .lobby-card,.clearance-card,.waiting-table,.ending-card { z-index:11; }
 .chat-orbit,.now-playing-relic { z-index:30; }
 .intermission-overlay { z-index:40; }
