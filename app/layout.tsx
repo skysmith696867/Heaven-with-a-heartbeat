@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Tarocchi Between Us",
-  description: "A private two player tarocchi game made for rivalry, revelation, and romantic connection.",
+  description: "A private two player tarocchi game. can u keep up",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
