@@ -72,7 +72,8 @@ export async function GET(request: Request) {
     if (new URL(request.url).searchParams.get("history") === "1") {
       const owner = await playerByHistoryToken(tokenFrom(request));
       if (!owner) throw new Error("Your history book could not be found.");
-      return Response.json({ matches: await archivedMatchesForToken(owner.history_token) });
+      const [matches, chronicles] = await Promise.all([archivedMatchesForToken(owner.history_token), chroniclesForRoom(owner.room_id)]);
+      return Response.json({ matches, chronicles: chronicles.map((profile) => ({ ...profile, roomId: owner.room_id })) });
     }
     const { player, room, state } = await authenticated(request);
     const [messages, chronicles] = await Promise.all([messagesForRoom(room.id), chroniclesForRoom(room.id)]);

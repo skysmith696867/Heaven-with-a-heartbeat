@@ -13,6 +13,7 @@ import type { GameCard, PlayedCard } from "@/lib/tarocchi";
 type Message = { id: number; body: string; created_at: string; player_id: string; name: string };
 type ArchivedMatch = { id: string; opponent_name: string; archived_at: string; result: string; forfeit: boolean; scoreboard: Record<string, number>; prompts: string[]; messages: Message[] };
 type ChronicleProfile = { playerId: string; name: string; answers: Record<string, string>; awardedQuestionIds: number[]; bonusPoints: number };
+type ArchivedChronicleProfile = ChronicleProfile & { roomId: string };
 const HISTORY_BOOKS_KEY = "past-lives-history-books";
 const PLAYER_NAME_KEY = "tarocchi-between-us-player-name";
 type ViewState = {
@@ -143,6 +144,8 @@ export default function Home() {
   const [exitOpen, setExitOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false); const [historyBusy, setHistoryBusy] = useState(false);
   const [history, setHistory] = useState<ArchivedMatch[]>([]); const [selectedHistory, setSelectedHistory] = useState<string | null>(null);
+  const [chronicleHistoryOpen, setChronicleHistoryOpen] = useState(false); const [chronicleHistoryBusy, setChronicleHistoryBusy] = useState(false);
+  const [chronicleHistory, setChronicleHistory] = useState<ArchivedChronicleProfile[]>([]); const [selectedChronicleHistory, setSelectedChronicleHistory] = useState<string | null>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async (active: Session) => {
@@ -184,6 +187,21 @@ export default function Home() {
       setHistory(Array.from(new Map(responses.flat().map((match) => [match.id, match])).values()));
       setHistoryOpen(true);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "The history books stayed closed."); } finally { setHistoryBusy(false); }
+  }
+  async function openChronicleHistory() {
+    setChronicleHistoryBusy(true); setError("");
+    try {
+      const books = JSON.parse(window.localStorage.getItem(HISTORY_BOOKS_KEY) ?? "[]") as { code: string; token: string }[];
+      const responses = await Promise.all(books.map(async (book) => {
+        const response = await fetch("/api/game?history=1", { headers: { authorization: `Bearer ${book.token}` }, cache: "no-store" });
+        return response.ok ? (await response.json()).chronicles as ArchivedChronicleProfile[] : [];
+      }));
+      const records = Array.from(new Map(responses.flat().map((profile) => [`${profile.roomId}:${profile.playerId}`, profile])).values());
+      setChronicleHistory(records);
+      setSelectedChronicleHistory((current) => current && records.some((profile) => `${profile.roomId}:${profile.playerId}` === current) ? current : records[0] ? `${records[0].roomId}:${records[0].playerId}` : null);
+      setChronicleHistoryOpen(true);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "The Chronicle Archive stayed sealed."); }
+    finally { setChronicleHistoryBusy(false); }
   }
 
   async function enter(action: "create" | "join") {
@@ -283,8 +301,9 @@ export default function Home() {
         <Button onClick={() => enter("create")} disabled={busy || !name.trim()} className="primary-romance"><Heart size={16} /> create our table</Button>
         <Button onClick={() => { setMode("join"); setError(""); }} variant="ghost" className="ghost-romance"><UsersRound size={16} /> i have a secret code</Button>
       </> : <><Button onClick={() => enter("join")} disabled={busy || !name.trim() || !joinCode.trim()} className="primary-romance"><LockKeyhole size={16} /> enter their orbit</Button><Button onClick={() => setMode("welcome")} variant="ghost" className="ghost-romance">go back</Button></>}</div>
-      {mode === "welcome" && <Button onClick={openHistory} disabled={historyBusy} variant="ghost" className="history-button"><BookOpen size={16} /> our past lives (the legends history books hold)</Button>}
+      {mode === "welcome" && <div className="home-archives"><Button onClick={openHistory} disabled={historyBusy} variant="ghost" className="history-button"><BookOpen size={16} /> our past lives (the legends history books hold)</Button><Button onClick={openChronicleHistory} disabled={chronicleHistoryBusy} variant="ghost" className="history-button chronicle-history-button"><ScrollText size={16} /> read the chronicles</Button></div>}
       {historyOpen && <section className="history-overlay" role="dialog" aria-modal="true" aria-labelledby="history-title"><div className="history-dialog"><button className="exit-close" onClick={() => setHistoryOpen(false)} aria-label="Close"><X size={18} /></button><p className="eyebrow">the archive</p><h2 id="history-title">legends of our time</h2>{!history.length && <p className="history-empty">No past lives have been written here yet.</p>}{history.map((match) => <article className="history-entry" key={match.id}><button onClick={() => setSelectedHistory(selectedHistory === match.id ? null : match.id)}><span>{match.opponent_name}</span><strong>{match.result}</strong><small>{new Date(match.archived_at).toLocaleDateString()} · {lunarAge(match.archived_at)}</small></button>{selectedHistory === match.id && <div className="history-detail"><p><strong>scoreboard</strong> {Object.entries(match.scoreboard).map(([player, score]) => `${player}: ${score}`).join(" · ")}</p><p><strong>prompts</strong> {match.prompts.length ? match.prompts.join(" / ") : "none"}</p><div className="history-messages">{match.messages.map((message) => <div className="message-bubble" key={message.id}><span>{message.name}</span><p>{message.body}</p></div>)}</div></div>}</article>)}</div></section>}
+      {chronicleHistoryOpen && <section className="history-overlay" role="dialog" aria-modal="true" aria-labelledby="chronicle-history-title"><div className="history-dialog chronicle-home-dialog"><button className="exit-close" onClick={() => setChronicleHistoryOpen(false)} aria-label="Close"><X size={18} /></button><p className="eyebrow">private human archive</p><h2 id="chronicle-history-title">{selectedChronicleHistory ? `The Chronicles of ${chronicleHistory.find((profile) => `${profile.roomId}:${profile.playerId}` === selectedChronicleHistory)?.name ?? "a peculiar human"}` : "The Chronicle Archive"}</h2>{!chronicleHistory.length ? <p className="history-empty">No Chronicle pages have been recorded on this device yet.</p> : <><div className="chronicle-profile-tabs home-chronicle-tabs">{chronicleHistory.map((profile) => { const key = `${profile.roomId}:${profile.playerId}`; return <button key={key} className={selectedChronicleHistory === key ? "is-active" : ""} onClick={() => setSelectedChronicleHistory(key)}>{profile.name}</button>; })}</div>{(() => { const profile = chronicleHistory.find((entry) => `${entry.roomId}:${entry.playerId}` === selectedChronicleHistory) ?? chronicleHistory[0]; if (!profile) return null; const recorded = Object.values(profile.answers).filter((answer) => answer.trim()).length; return <><div className="home-chronicle-score"><span>{recorded} entries recorded</span><strong>+{profile.bonusPoints} points discovered</strong></div><div className="home-chronicle-pages">{chronicleQuestions.map((question) => { const answer = profile.answers[String(question.id)]; return <article key={question.id} className={`chronicle-page ${answer ? "is-recorded" : ""}`}><div className="chronicle-question"><span>{String(question.id).padStart(2, "0")}</span><p>{question.prompt}</p></div>{answer ? <><p className="chronicle-answer">{answer}</p>{profile.awardedQuestionIds.includes(question.id) && <div className="chronicle-answer-status"><strong><Sparkles /> +5 points earned</strong></div>}</> : <p className="chronicle-unknown">??? · entry undiscovered</p>}</article>; })}</div></>; })()}</>}</div></section>}
     </section>
   </main>;
 
