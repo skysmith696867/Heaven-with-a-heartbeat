@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { chronicleQuestions } from "@/lib/chronicle";
+import { KintsugiEnding, type KintsugiState } from "@/components/kintsugi-ending";
 import type { GameCard, PlayedCard } from "@/lib/tarocchi";
 
 type Message = { id: number; body: string; created_at: string; player_id: string; name: string };
@@ -26,7 +27,7 @@ type ViewState = {
   stockCount: number; currentTrick: PlayedCard[]; leaderId: string | null; turnId: string | null;
   trickNumber: number; promptIndex: number; prompt: string | null; lastWinnerId: string | null;
   intermissionOpen: boolean; intermissionReadyCount: number; youReady: boolean;
-  lastMessage: string; winnerId: string | null; messages: Message[]; chronicles: ChronicleProfile[];
+  lastMessage: string; winnerId: string | null; messages: Message[]; chronicles: ChronicleProfile[]; kintsugi?: KintsugiState;
 };
 type Session = { code: string; token: string };
 
@@ -300,6 +301,16 @@ export default function Home() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "That portrait could not enter the room."); }
     finally { setAvatarBusy(false); }
   }
+  async function saveKintsugiFragment(questionId: number, word: string) {
+    if (!session) return;
+    const result = await callGame({ action: "kintsugi-fragment", code: session.code, questionId, word }, session);
+    setGame(result.state);
+  }
+  async function saveKintsugiPortrait(portrait: string, seal: boolean) {
+    if (!session) return;
+    const result = await callGame({ action: "kintsugi-portrait", code: session.code, portrait, seal }, session);
+    setGame(result.state);
+  }
   async function exitMatch(action: "leave" | "close") {
     if (!session) return; setBusy(true); setError("");
     try {
@@ -375,7 +386,7 @@ export default function Home() {
     {game.phase === "waiting" ? <section className="waiting-table"><div className="card-back waiting-back"><Heart /><span>SKY</span></div><p className="eyebrow">the table is waiting</p><h2>send this code to the person you would rather be here with</h2><button className="giant-code" onClick={() => navigator.clipboard.writeText(session.code)}>{session.code} <Copy size={20} /></button><p>The cards will deal themselves when they arrive.</p></section> : game.matchExit ? <section className="ending-card"><p className="eyebrow">{game.matchExit === "closed" ? "the table is closed" : "the table is unfinished"}</p><h2>{game.matchExit === "closed" ? "until next time" : "they left the table"}</h2><p>{game.lastMessage}</p><div className="ending-actions"><Button onClick={() => setChatOpen(true)} className="primary-romance">keep talking</Button><Button onClick={returnToLobby} variant="outline" className="ready-button">back to the beginning of time</Button></div><span className="chat-kept">this room and every message will still be here when you return</span></section> : <>
       <section className="status-row"><div><span>{game.opponent?.name}</span><strong>{game.opponent?.cardCount ?? 0} cards · {game.opponent?.score ?? 0} points</strong></div><p>{game.lastMessage}</p><div className="align-right"><span>trick {game.trickNumber}</span><strong>{game.stockCount} in the stock</strong></div></section>
       <section className="table-area"><div className="opponent-hand" aria-label="Opponent cards">{Array.from({ length: Math.min(8, game.opponent?.cardCount ?? 0) }, (_, i) => <div className="mini-back" key={i}><Heart size={13} /></div>)}</div><div className="trick-stage">{game.currentTrick.length ? game.currentTrick.map(({ playerId, card }) => <div className="played-slot" key={`${playerId}-${card.id}`}><span>{playerId === game.you.id ? "you" : game.opponent?.name}</span><CardFace card={card} compact /></div>) : <div className="empty-trick"><Heart /><p>{isYourTurn ? "lead with a card" : `waiting for ${game.opponent?.name}`}</p></div>}</div></section>
-      {game.phase === "finished" ? <section className="ending-card"><p className="eyebrow">the final trick</p><h2>{game.winnerId === game.you.id ? "you won the cards" : game.winnerId ? `${game.opponent?.name} won the cards` : "the cards call it even"}</h2><p>Winning was never the dangerous part. Being honest was.</p><div className="ending-actions"><Button onClick={() => setChatOpen(true)} className="primary-romance">keep talking</Button><Button onClick={returnToLobby} variant="outline" className="ready-button">back to the beginning of time</Button></div><span className="chat-kept">this room and every message will still be here when you return</span></section> : <section className="your-hand"><div className="hand-heading"><div><p className="eyebrow">your hand</p><h2>{isYourTurn ? "your move, beautiful" : "watch what they reveal"}</h2></div><span>{game.you.score} points captured</span></div>{error && <p className="error-note">{error}</p>}<div className="cards-scroll">{game.you.hand.map((card) => <CardFace key={card.id} card={card} onPlay={() => play(card.id)} disabled={!isYourTurn || busy} />)}</div></section>}
+      {game.phase === "finished" ? <KintsugiEnding kintsugi={game.kintsugi} chronicles={game.chronicles} onSaveFragment={saveKintsugiFragment} onSavePortrait={saveKintsugiPortrait} onKeepTalking={() => setChatOpen(true)} onReturn={returnToLobby} /> : <section className="your-hand"><div className="hand-heading"><div><p className="eyebrow">your hand</p><h2>{isYourTurn ? "your move, beautiful" : "watch what they reveal"}</h2></div><span>{game.you.score} points captured</span></div>{error && <p className="error-note">{error}</p>}<div className="cards-scroll">{game.you.hand.map((card) => <CardFace key={card.id} card={card} onPlay={() => play(card.id)} disabled={!isYourTurn || busy} />)}</div></section>}
     </>}
     <button className="chronicle-orbit" onClick={openChronicles} aria-label="Open Chronicle Archive"><ScrollText /><span>chronicle archive</span></button>
     {chronicleNotice && !chronicleOpen && <p className="global-chronicle-notice">{chronicleNotice}</p>}
