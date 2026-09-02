@@ -167,8 +167,9 @@ export function playCard(state: GameState, playerId: string, cardId: string) {
     if (firstDraw) state.hands[winnerId].push(firstDraw);
     if (secondDraw) state.hands[loserId].push(secondDraw);
   }
-  state.promptIndex += 1;
-  state.intermissionOpen = true;
+  const questionDue = state.trickNumber % 3 === 0;
+if (questionDue) state.promptIndex += 1;
+state.intermissionOpen = questionDue;
   state.intermissionReady = [];
   state.trickNumber += 1;
   if (!state.hands[winnerId].length && !state.hands[loserId].length) {
@@ -180,7 +181,7 @@ export function playCard(state: GameState, playerId: string, cardId: string) {
     state.lastMessage = state.winnerId ? `${state.playerNames[state.winnerId]} wins the cards. Both of you leave with what was revealed.` : "The cards call it even. The night does not.";
   } else {
     state.leaderId = winnerId;
-    state.turnId = null;
+    state.turnId = questionDue ? null : winnerId;
   }
 }
 
